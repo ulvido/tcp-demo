@@ -20,7 +20,7 @@ fn main() -> std::io::Result<()> {
                 Ok(n) => {
                     println!("Server says {}", String::from_utf8_lossy(&buffer[..n]));
                 }
-                Err(_e) => break,
+                Err(_) => break,
             }
         }
     });
