@@ -13,14 +13,17 @@ fn main() -> std::io::Result<()> {
     // main thread ve bu thread'in ikisinde de loop attığımız joinhandle muhabbetine gerek kalmıyor.
     // zaten main loop quit ettiğinde hepsi çöksün gitsin
     thread::spawn(move || {
-        let mut buffer = [0; 1024];
+        let mut buffer = [0u8; 1024];
         loop {
             match reader.read(&mut buffer) {
                 Ok(0) => break,
                 Ok(n) => {
                     println!("Server says {}", String::from_utf8_lossy(&buffer[..n]));
                 }
-                Err(_) => break,
+                Err(e) => {
+                    eprintln!("Read error: {e}");
+                    break;
+                }
             }
         }
     });
@@ -28,9 +31,7 @@ fn main() -> std::io::Result<()> {
     loop {
         let mut input = String::new();
 
-        std::io::stdin()
-            .read_line(&mut input)
-            .expect("input required");
+        std::io::stdin().read_line(&mut input)?;
 
         // println!("{}", input.trim());
 
@@ -38,7 +39,7 @@ fn main() -> std::io::Result<()> {
             break;
         }
 
-        stream.write_all(input.trim().as_bytes()).unwrap();
+        stream.write_all(input.trim().as_bytes())?;
     }
 
     Ok(())
