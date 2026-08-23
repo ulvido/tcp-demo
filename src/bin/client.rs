@@ -18,7 +18,7 @@ fn main() -> std::io::Result<()> {
             match reader.read(&mut buffer) {
                 Ok(0) => break,
                 Ok(n) => {
-                    println!("Server says {}", String::from_utf8_lossy(&buffer[..n]));
+                    println!("{}", String::from_utf8_lossy(&buffer[..n]));
                 }
                 Err(e) => {
                     eprintln!("Read error: {e}");

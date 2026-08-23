@@ -1,13 +1,47 @@
 use std::{
+    collections::HashMap,
     io::{Read, Write},
-    net::{TcpListener, TcpStream},
+    net::{SocketAddr, TcpListener, TcpStream},
+    sync::{Arc, Mutex},
     thread,
 };
 
-fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
-    // println!("{stream:#?}");
-    let peer = stream.peer_addr()?;
-    println!("New Connection: {}", peer);
+type PeersType = Arc<Mutex<HashMap<SocketAddr, TcpStream>>>;
+
+fn main() -> std::io::Result<()> {
+    let listener = TcpListener::bind("0.0.0.0:3000")?;
+    println!("Server running at 127.0.0.1:3000");
+
+    let peers: PeersType = Arc::new(Mutex::new(HashMap::new()));
+
+    for stream in listener.incoming() {
+        let stream = stream?;
+        let addr = stream.peer_addr()?;
+        let peers_clone = Arc::clone(&peers);
+
+        // İstemciyi hashmap'e ekle (.expect kaldırıldı)
+        {
+            let mut peers_guard = peers.lock().expect("Peers lock error");
+            peers_guard.insert(addr, stream.try_clone()?);
+        }
+
+        // peers_clone içeri aktarıldı
+        thread::spawn(move || {
+            if let Err(e) = handle_connection(stream, addr, peers_clone) {
+                eprintln!("Handle connection error: {e}");
+            }
+        });
+    }
+
+    Ok(())
+}
+
+fn handle_connection(
+    mut stream: TcpStream,
+    addr: SocketAddr,
+    peers: PeersType,
+) -> std::io::Result<()> {
+    println!("New Connection: {}", addr);
 
     let mut buffer = [0u8; 1024];
 
@@ -16,34 +50,45 @@ fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
             Ok(0) => break,
             Ok(n) => n,
             Err(e) => {
-                eprintln!("Read error from {peer}: {e}");
+                eprintln!("Read error from {addr}: {e}");
                 break;
             }
         };
+
         println!(
             "Message from {}: {}",
-            peer,
+            addr,
             String::from_utf8_lossy(&buffer[..bytes_read])
         );
-        stream.write_all(b"Message received")?;
+
+        // Doğrudan HashMap üzerinde döngü (vektör yok, klonlama yok)
+        {
+            let mut peers_lock = peers.lock().expect("Peers lock error");
+
+            for (peer_addr, peer_stream) in peers_lock.iter_mut() {
+                if *peer_addr != addr {
+                    // Yazma hatası olursa diğer istemcileri etkilememesi için unwrap/try (?) yapılmaz
+                    let _ = peer_stream.write_all(
+                        format!(
+                            "{}: {}",
+                            addr,
+                            String::from_utf8_lossy(&buffer[..bytes_read])
+                        )
+                        .as_bytes(),
+                    );
+                }
+            }
+        }
     }
 
-    println!("Client {} disconnected", peer);
-    Ok(())
-}
+    println!("Client {} disconnected", addr);
 
-fn main() -> std::io::Result<()> {
-    let listener = TcpListener::bind("0.0.0.0:3000")?;
-    println!("Server running at 127.0.0.1:3000");
-
-    // Accept connections and handle each client in a separate thread
-    for stream in listener.incoming() {
-        let stream = stream?;
-        thread::spawn(move || {
-            if let Err(e) = handle_connection(stream) {
-                eprintln!("Handle connection error: {e}")
-            }
-        });
+    // Ayrılan istemciyi listeden sil
+    {
+        let mut peers_lock = peers.lock().expect("Peers lock error");
+        if peers_lock.remove(&addr).is_some() {
+            println!("Client {} removed from peers list", addr);
+        }
     }
 
     Ok(())
