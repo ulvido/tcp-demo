@@ -5,7 +5,7 @@ use std::{
 };
 
 fn main() -> std::io::Result<()> {
-    let mut stream = TcpStream::connect("0.0.0.0:3000")?;
+    let mut stream = TcpStream::connect("127.0.0.1:3000")?;
     // stream.write_all(b"Hello from client").unwrap();
 
     let mut reader = stream.try_clone()?;
